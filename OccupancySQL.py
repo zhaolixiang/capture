@@ -22,15 +22,17 @@ class OccupancySQL:
                                            occ3        text,
                                            occ4        text,
                                            date        text,
-                                           session     text
+                                           session     text,
+                                            imagic    text,
+                                            username    text
                                            );'''
                   )
         self.sql_helper.conn.commit()
 
-    def insert(self, model,location,type,occ1,occ2,occ3,occ4,date,session):
-        sql = """INSERT INTO OCCUPANCY (model,location,type,occ1,occ2,occ3,occ4,date,session) 
-VALUES ("{}","{}","{}","{}","{}","{}","{}","{}","{}")""".format(
-            model, location, type, occ1,occ2,occ3,occ4,date,session)
+    def insert(self, model,location,type,occ1,occ2,occ3,occ4,date,session,imagic,username):
+        sql = """INSERT INTO OCCUPANCY (model,location,type,occ1,occ2,occ3,occ4,date,session,imagic,username) 
+VALUES ("{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}")""".format(
+            model, location, type, occ1,occ2,occ3,occ4,date,session,imagic,username)
         return self.sql_helper.insert(sql)
 
     # def update(self,model,location,type,occ1,occ2,occ3,occ4,delete_date):
@@ -54,13 +56,40 @@ VALUES ("{}","{}","{}","{}","{}","{}","{}","{}","{}")""".format(
         #     "password": item[2],
         # }
 
-    def get_count_from_type(self,type):
-        result=self.sql_helper.select("select * from OCCUPANCY where type='{}'".format(type))
-        print("指定type数量",type,len(result))
-        return len(result)
-    def get_all(self):
+    def get_count_from_type(self,type,session):
+        result=self.sql_helper.select("select * from OCCUPANCY where type='{}' and session='{}'".format(type,session))
+        count=0
+        for item in result:
+            if item[1].strip()=='add':
+                count+=1
+            else:
+                count-=1
+        if count<0:
+            count=0
+        return count
+    def get_all_count(self,session=None):
+        if session:
+            result=self.sql_helper.select("""select * from OCCUPANCY where session='{}'""".format(session))
+        else:
+            result = self.sql_helper.select("""select * from OCCUPANCY""")
+        count = 0
+        for item in result:
+            if item[1].strip() == 'add':
+                count += 1
+            else:
+                count -= 1
+        if count < 0:
+            count = 0
+        return count
+
+    def get_all(self,session=None):
         # 获取多个
-        lins=self.sql_helper.select("""select * from OCCUPANCY""")
+        if session:
+            lins=self.sql_helper.select("""select * from OCCUPANCY where session='{}'""".format(session))
+        else:
+            lins = self.sql_helper.select("""select * from OCCUPANCY""")
+
+
         result=[]
         for item in lins:
             son={
@@ -74,6 +103,7 @@ VALUES ("{}","{}","{}","{}","{}","{}","{}","{}","{}")""".format(
                 "occ4":item[7],
                 "date":item[8],
                 "session":item[9],
+                "name":item[11],
             }
             result.append(son)
         return result

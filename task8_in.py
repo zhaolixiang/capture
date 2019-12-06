@@ -34,7 +34,10 @@ def read_csv(file='task8_in.csv'):
                                  occ3=occ3,
                                  occ4=occ4,
                              date=date+" "+time,
-                             session=session,)
+                             session=session,
+                                 imagic='',
+                                 username=''
+                                 )
             # lists.append({
             #     'name':name,
             #     'date':date+" "+time,

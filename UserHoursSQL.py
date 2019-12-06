@@ -15,13 +15,14 @@ class UserHoursSQL:
                                            id integer PRIMARY KEY autoincrement,
                                            name           CHAR(50)    NOT NULL,
                                            date        text,
-                                           model        text
+                                           model        text,
+                                           imagic    text
                                            );'''
                   )
         self.sql_helper.conn.commit()
 
-    def insert(self, name, date,model):
-        sql = """INSERT INTO USERHOURS (name,date,model) VALUES ("{}","{}","{}")""".format(name, date,model)
+    def insert(self, name, date,model,imagic):
+        sql = """INSERT INTO USERHOURS (name,date,model,imagic) VALUES ("{}","{}","{}","{}")""".format(name, date,model,imagic)
         self.sql_helper.insert(sql)
 
     def get_one(self):

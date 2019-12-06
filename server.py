@@ -17,6 +17,7 @@
 import datetime
 import hashlib
 import http.cookies as Cookie  # some cookie handling support
+import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer  # the heavy lifting of the web server
 import urllib  # some url parsing support
 import base64  # some encoding support
@@ -61,12 +62,12 @@ def build_response_redirect(where):
 # 确定user和magic的组合是否有效
 def handle_validate(iuser, imagic):
     if len(iuser.strip()) > 0 and len(imagic.strip()) > 0:
-        result = session_sql.get_one(iuser)
+        result = session_sql.get_one(imagic)
         if result:
-            print("密码对比",imagic,result['imagic'])
-        if result and imagic == result['imagic']:
-            return True
-    return False
+            print("cookie对比", imagic, result['imagic'])
+        if result and iuser == result['username']:
+            return result
+    return None
     # if (iuser == 'test') and (imagic == '1234567890'):
     #     return True
     # else:
@@ -75,8 +76,8 @@ def handle_validate(iuser, imagic):
 
 ## remove the combination of user and magic from the data base, ending the login
 # 从数据库中删除用户和魔术的组合，结束登录
-def handle_delete_session(iuser):
-    session_sql.delete(iuser)
+def handle_delete_session(imagic):
+    session_sql.delete(imagic)
 
 
 ## A user has supplied a username (parameters['usernameinput'][0])
@@ -90,21 +91,22 @@ def handle_delete_session(iuser):
 ## Return the username, magic identifier and the response action set.
 # 返回用户名，魔术标识符和响应操作集。
 def handle_login_request(iuser, imagic, parameters):
-    if handle_validate(iuser, imagic) == True:
+    if handle_validate(iuser, imagic):
         # the user is already logged in, so end the existing session.
         # 用户已经登录，因此结束现有会话。
-        handle_delete_session(iuser)
+        handle_delete_session(imagic)
     text = "<response>\n"
     user = parameters['usernameinput'][0]
     password = parameters['passwordinput'][0]
     lines = (password).encode('utf-8')
-    magic = hashlib.md5(lines).hexdigest()
+    password = hashlib.md5(lines).hexdigest()
 
     u = user_sql.get_one(user)
-    if u and magic == u.get("password"):
+    if u and password == u.get("password"):
         # 登录成功
-        user_hour_sql.insert(user, datetime.datetime.strftime(datetime.datetime.now(), '%d/%m/%Y %H%M'), 'login')
-        session_sql.insert(user,magic)
+        magic=uuid.uuid4()
+        user_hour_sql.insert(user, datetime.datetime.strftime(datetime.datetime.now(), '%d/%m/%Y %H%M'), 'login', magic)
+        session_sql.insert(user, magic)
         print("登录成功楼")
         text += build_response_redirect('/page.html')
         # user = 'test'
@@ -130,27 +132,31 @@ def handle_login_request(iuser, imagic, parameters):
 ## parameters['typeinput'][0] the type to be recorded 要记录的类型
 ## Return the username, magic identifier (these can be empty  strings) and the response action set.
 def handle_add_request(iuser, imagic, parameters):
-    print("handle_add_request",parameters)
+    print("handle_add_request", parameters)
     text = "<response>\n"
-    if handle_validate(iuser, imagic) != True:
+    session=handle_validate(iuser, imagic)
+    if not session:
         # Invalid sessions redirect to login - 无效的会话重定向到登录
         text += build_response_redirect('/index.html')
     else:  ## a valid session so process the addition of the entry.
         # 有效的会话，因此请处理条目的添加。
-        occ=parameters.get('occupancyinput',[''])[0]
-        occ1='1' if occ=='1' else '0'
-        occ2='1' if occ=='2' else '0'
-        occ3='1' if occ=='3' else '0'
-        occ4='1' if occ=='4' else '0'
+        occ = parameters.get('occupancyinput', [''])[0]
+        occ1 = '1' if occ == '1' else '0'
+        occ2 = '1' if occ == '2' else '0'
+        occ3 = '1' if occ == '3' else '0'
+        occ4 = '1' if occ == '4' else '0'
         occupancy_sql.insert(model='add',
-                             location=parameters.get('locationinput',[''])[0],
-                             type=parameters.get('typeinput',[''])[0],
+                             location=parameters.get('locationinput', [''])[0],
+                             type=parameters.get('typeinput', [''])[0],
                              occ1=occ1,
                              occ2=occ2,
                              occ3=occ3,
                              occ4=occ4,
-                             date=datetime.datetime.strftime(datetime.datetime.now(),'%d/%m/%Y %H%M'),
-                             session='1')
+                             date=datetime.datetime.strftime(datetime.datetime.now(), '%d/%m/%Y %H%M'),
+                             session=session['id'],
+                             imagic=imagic,
+                             username=iuser
+                             )
         text += build_response_refill('message', 'Entry added.')  # 替换一部分：条目已添加
         text += build_response_refill('total', '1')
     text += "</response>\n"
@@ -169,32 +175,43 @@ def handle_add_request(iuser, imagic, parameters):
 ## Return the username, magic identifier (these can be empty  strings) and the response action set.
 def handle_undo_request(iuser, imagic, parameters):
     text = "<response>\n"
-    if handle_validate(iuser, imagic) != True:
+    session = handle_validate(iuser, imagic)
+    if not session:
         # Invalid sessions redirect to login - 无效的会话重定向到登录
         text += build_response_redirect('/index.html')
     else:  ## a valid session so process the recording of the entry.
-        occ = parameters.get('occupancyinput', [''])[0]
-        occ1 = '1' if occ == '1' else '0'
-        occ2 = '1' if occ == '2' else '0'
-        occ3 = '1' if occ == '3' else '0'
-        occ4 = '1' if occ == '4' else '0'
-        # occupancy_sql.update(
-        #                      model='add',
-        #                      location=parameters.get('locationinput', [])[0],
-        #                      type=parameters.get('typeinput', [])[0],
-        #                      occ=parameters.get('occupancyinput', [])[0],
-        #     delete_date=datetime.datetime.strftime(datetime.datetime.now(), '%d/%m/%Y %H%M'))
-        occupancy_sql.insert(model='undo',
-                             location=parameters.get('locationinput', [''])[0],
-                             type=parameters.get('typeinput', [''])[0],
-                             occ1=occ1,
-                             occ2=occ2,
-                             occ3=occ3,
-                             occ4=occ4,
-                             date=datetime.datetime.strftime(datetime.datetime.now(), '%d/%m/%Y %H%M'),
-                             session='1')
-        text += build_response_refill('message', 'Entry Un-done.')  # 替换一部分：输入未完成
-        text += build_response_refill('total', '0')
+        the_type = parameters.get('typeinput', [''])[0]
+        if occupancy_sql.get_count_from_type(the_type,session['id']) > 0:
+            # 如果存在就删除
+            occ = parameters.get('occupancyinput', [''])[0]
+            occ1 = '1' if occ == '1' else '0'
+            occ2 = '1' if occ == '2' else '0'
+            occ3 = '1' if occ == '3' else '0'
+            occ4 = '1' if occ == '4' else '0'
+            # occupancy_sql.update(
+            #                      model='add',
+            #                      location=parameters.get('locationinput', [])[0],
+            #                      type=parameters.get('typeinput', [])[0],
+            #                      occ=parameters.get('occupancyinput', [])[0],
+            #     delete_date=datetime.datetime.strftime(datetime.datetime.now(), '%d/%m/%Y %H%M'))
+            occupancy_sql.insert(model='undo',
+                                 location=parameters.get('locationinput', [''])[0],
+                                 type=parameters.get('typeinput', [''])[0],
+                                 occ1=occ1,
+                                 occ2=occ2,
+                                 occ3=occ3,
+                                 occ4=occ4,
+                                 date=datetime.datetime.strftime(datetime.datetime.now(), '%d/%m/%Y %H%M'),
+                                 session=session['id'],
+                                 imagic=imagic,
+                                 username=iuser
+                                 )
+            text += build_response_refill('message', 'Entry Un-done.')  # 替换一部分：输入未完成
+            text += build_response_refill('total', '1')
+        else:
+            text += build_response_refill('message', 'Un-done un-success')  # 替换一部分：输入未完成
+            text += build_response_refill('total', '0')
+
     text += "</response>\n"
     user = ''
     magic = ''
@@ -207,7 +224,7 @@ def handle_undo_request(iuser, imagic, parameters):
 # 仅当您在其他地方进行更改以破坏其行为时，才需要修改此代码
 def handle_back_request(iuser, imagic, parameters):
     text = "<response>\n"
-    if handle_validate(iuser, imagic) != True:
+    if not handle_validate(iuser, imagic):
         text += build_response_redirect('/index.html')
     else:
         text += build_response_redirect('/summary.html')
@@ -224,8 +241,8 @@ def handle_back_request(iuser, imagic, parameters):
 ## And that the session magic is revoked.
 # 会话魔术被撤销。
 def handle_logout_request(iuser, imagic, parameters):
-    handle_delete_session(iuser)
-    user_hour_sql.insert(iuser, datetime.datetime.strftime(datetime.datetime.now(), '%d/%m/%Y %H%M'), 'logout ')
+    handle_delete_session(imagic)
+    user_hour_sql.insert(iuser, datetime.datetime.strftime(datetime.datetime.now(), '%d/%m/%Y %H%M'), 'logout ', imagic)
     text = "<response>\n"
     text += build_response_redirect('/index.html')  # 注销后跳转到登录界面
     user = '!'
@@ -240,18 +257,19 @@ def handle_logout_request(iuser, imagic, parameters):
 # 您将需要从数据库中提取此信息
 def handle_summary_request(iuser, imagic, parameters):
     text = "<response>\n"
-    if handle_validate(iuser, imagic) != True:
+    session = handle_validate(iuser, imagic)
+    if not session:
         text += build_response_redirect('/index.html')
     else:
-        text += build_response_refill('sum_car', str(occupancy_sql.get_count_from_type('car')))  # ？0是什么
-        text += build_response_refill('sum_taxi', str(occupancy_sql.get_count_from_type('taxi')))
-        text += build_response_refill('sum_bus', str(occupancy_sql.get_count_from_type('bus')))
-        text += build_response_refill('sum_motorbike', str(occupancy_sql.get_count_from_type('motorbike')))
-        text += build_response_refill('sum_bicycle', str(occupancy_sql.get_count_from_type('bicycle')))
-        text += build_response_refill('sum_van', str(occupancy_sql.get_count_from_type('van')))
-        text += build_response_refill('sum_truck', str(occupancy_sql.get_count_from_type('truck')))
-        text += build_response_refill('sum_other', str(occupancy_sql.get_count_from_type('other')))
-        text += build_response_refill('total',str(len(occupancy_sql.get_all())))
+        text += build_response_refill('sum_car', str(occupancy_sql.get_count_from_type('car',session['id'])))  # ？0是什么
+        text += build_response_refill('sum_taxi', str(occupancy_sql.get_count_from_type('taxi',session['id'])))
+        text += build_response_refill('sum_bus', str(occupancy_sql.get_count_from_type('bus',session['id'])))
+        text += build_response_refill('sum_motorbike', str(occupancy_sql.get_count_from_type('motorbike',session['id'])))
+        text += build_response_refill('sum_bicycle', str(occupancy_sql.get_count_from_type('bicycle',session['id'])))
+        text += build_response_refill('sum_van', str(occupancy_sql.get_count_from_type('van',session['id'])))
+        text += build_response_refill('sum_truck', str(occupancy_sql.get_count_from_type('truck',session['id'])))
+        text += build_response_refill('sum_other', str(occupancy_sql.get_count_from_type('other',session['id'])))
+        text += build_response_refill('total', str(occupancy_sql.get_all_count(session['id'])))
         text += "</response>\n"
         user = ''
         magic = ''
@@ -411,7 +429,8 @@ class myHTTPServer_RequestHandler(BaseHTTPRequestHandler):
 session_sql = None
 user_sql = None
 user_hour_sql = None
-occupancy_sql=None
+occupancy_sql = None
+
 
 # This is the entry point function to this code.
 def run():
@@ -427,7 +446,7 @@ def run():
     session_sql = SessionSQL(sql_helper)
     user_sql = UserSQL(sql_helper)
     user_hour_sql = UserHoursSQL(sql_helper)
-    occupancy_sql=OccupancySQL(sql_helper)
+    occupancy_sql = OccupancySQL(sql_helper)
     server_address = ('127.0.0.1', 8081)
     httpd = HTTPServer(server_address, myHTTPServer_RequestHandler)
     print('running server...')

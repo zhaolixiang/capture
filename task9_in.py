@@ -23,7 +23,7 @@ def read_csv(file='task9_in.csv'):
             #     'date':date+" "+time,
             #     'model':model
             # })
-            user_hours_sql.insert(name, date+" "+time, model)
+            user_hours_sql.insert(name, date+" "+time, model,'')
     # lists.sort(key=itemgetter('name'))
     # for name,items in groupby(lists,itemgetter('name')):
     #     items=[i for i in items]
