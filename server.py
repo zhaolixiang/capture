@@ -17,20 +17,264 @@
 import datetime
 import hashlib
 import http.cookies as Cookie  # some cookie handling support
+import sqlite3
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer  # the heavy lifting of the web server
 import urllib  # some url parsing support
 import base64  # some encoding support
 
-# This function builds a refill action that allows part of the
-# currently loaded page to be replaced.
-# 此功能建立一个重新填充操作，该操作允许替换当前加载页面的一部分。
-from OccupancySQL import OccupancySQL
-from SQLHelper import SQLHelper
-from SessionSQL import SessionSQL
-from UserHoursSQL import UserHoursSQL
-from UserSQL import UserSQL
 
+class SQLHelper():
+    def __init__(self):
+        self.conn = sqlite3.connect('initial_database.db')
+
+    def insert(self, sql):
+        print("inset", sql)
+        c = self.conn.cursor()
+        c.execute(sql)
+        self.conn.commit()
+
+    def select(self, sql):
+        print("select", sql)
+        c = self.conn.cursor()
+        cursor = c.execute(sql)
+        result = []
+        for row in cursor:
+            result.append(row)
+        return result
+
+    def update(self, sql):
+        c = self.conn.cursor()
+        c.execute(sql)
+        self.conn.commit()
+
+    def delete(self, sql):
+        c = self.conn.cursor()
+        c.execute(sql)
+        self.conn.commit()
+
+    def __del__(self):
+        self.conn.close()
+
+
+class OccupancySQL:
+    def __init__(self, sql_helper):
+        self.sql_helper = sql_helper
+        self.user_hours_init()
+
+    def user_hours_init(self):
+        # 信息初始化
+        #
+        c = self.sql_helper.conn.cursor()
+        # model=add
+        c.execute('''CREATE TABLE IF NOT EXISTS OCCUPANCY
+                                           (
+                                           id integer PRIMARY KEY autoincrement,
+                                           model        text,
+                                           location        text,
+                                           type        text,
+                                           occ1        text,
+                                           occ2        text,
+                                           occ3        text,
+                                           occ4        text,
+                                           date        text,
+                                           session     text,
+                                            imagic    text,
+                                            username    text
+                                           );'''
+                  )
+        self.sql_helper.conn.commit()
+
+    def insert(self, model, location, type, occ1, occ2, occ3, occ4, date, session, imagic, username):
+        sql = """INSERT INTO OCCUPANCY (model,location,type,occ1,occ2,occ3,occ4,date,session,imagic,username) 
+VALUES ("{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}")""".format(
+            model, location, type, occ1, occ2, occ3, occ4, date, session, imagic, username)
+        return self.sql_helper.insert(sql)
+
+    def get_count_from_type(self, type, session):
+        result = self.sql_helper.select(
+            "select * from OCCUPANCY where type='{}' and session='{}'".format(type, session))
+        count = 0
+        for item in result:
+            if item[1].strip() == 'add':
+                count += 1
+            else:
+                count -= 1
+        if count < 0:
+            count = 0
+        return count
+
+    def get_all_count(self, session=None):
+        if session:
+            result = self.sql_helper.select("""select * from OCCUPANCY where session='{}'""".format(session))
+        else:
+            result = self.sql_helper.select("""select * from OCCUPANCY""")
+        count = 0
+        for item in result:
+            if item[1].strip() == 'add':
+                count += 1
+            else:
+                count -= 1
+        if count < 0:
+            count = 0
+        return count
+
+    def get_all(self, session=None):
+        # 获取多个
+        if session:
+            lins = self.sql_helper.select("""select * from OCCUPANCY where session='{}'""".format(session))
+        else:
+            lins = self.sql_helper.select("""select * from OCCUPANCY""")
+
+        result = []
+        for item in lins:
+            son = {
+                "id": item[0],
+                "model": item[1],
+                "location": item[2],
+                "type": item[3],
+                "occ1": item[4],
+                "occ2": item[5],
+                "occ3": item[6],
+                "occ4": item[7],
+                "date": item[8],
+                "session": item[9],
+                "name": item[11],
+            }
+            result.append(son)
+        return result
+
+
+class SessionSQL:
+    def __init__(self, sql_helper):
+        self.sql_helper = sql_helper
+        self.user_init()
+
+    def user_init(self):
+        # 用户表信息初始化
+        # 创建用户表
+        try:
+            c = self.sql_helper.conn.cursor()
+            c.execute('''CREATE TABLE SESSION 
+                                   (
+                                   id integer PRIMARY KEY autoincrement,
+                                   username            CHAR(50)   NOT NULL,
+                                   imagic        CHAR(50),
+                                   logout INTEGER 
+
+                                   );'''
+                      )
+            self.sql_helper.conn.commit()
+
+        except Exception as e:
+            pass
+
+    def insert(self, name, imagic):
+        sql = """INSERT INTO SESSION (username ,imagic,logout) VALUES ("{}","{}",0)""".format(name, imagic)
+        self.sql_helper.insert(sql)
+
+    def get_one(self, imagic):
+        # 获取单个
+        sql = 'select * from SESSION where imagic="{}" and logout=0 order by id desc'.format(imagic)
+        row = self.sql_helper.select(sql)
+        if not row:
+            return None
+        item = row[0]
+        return {
+            "id": item[0],
+            "username": item[1],
+            "imagic": item[2],
+        }
+
+    def delete(self, imagic):
+        sql = "update  SESSION set logout=1 where imagic='{}'".format(imagic)
+        self.sql_helper.delete(sql)
+
+
+class UserHoursSQL:
+    def __init__(self, sql_helper):
+        self.sql_helper = sql_helper
+        self.user_hours_init()
+
+    def user_hours_init(self):
+        # 信息初始化
+        #
+        c = self.sql_helper.conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS USERHOURS
+                                           (
+                                           id integer PRIMARY KEY autoincrement,
+                                           name           CHAR(50)    NOT NULL,
+                                           date        text,
+                                           model        text,
+                                           imagic    text
+                                           );'''
+                  )
+        self.sql_helper.conn.commit()
+
+    def insert(self, name, date,model,imagic):
+        sql = """INSERT INTO USERHOURS (name,date,model,imagic) VALUES ("{}","{}","{}","{}")""".format(name, date,model,imagic)
+        self.sql_helper.insert(sql)
+
+    def get_all(self):
+        # 获取多个
+        lins=self.sql_helper.select("""select * from USERHOURS""")
+        result=[]
+        for item in lins:
+            son={
+                "id":item[0],
+                "name":item[1],
+                "date":datetime.datetime.strptime(item[2], '%d/%m/%Y %H%M'),
+                "model":item[3],
+            }
+            result.append(son)
+        return result
+
+
+import hashlib
+
+
+class UserSQL:
+    def __init__(self, sql_helper):
+        self.sql_helper = sql_helper
+        self.user_init()
+
+    def user_init(self):
+        # 用户表信息初始化
+        # 创建用户表
+        try:
+            c = self.sql_helper.conn.cursor()
+            c.execute('''CREATE TABLE USER 
+                                   (
+                                   id integer PRIMARY KEY autoincrement,
+                                   username            CHAR(50)   NOT NULL,
+                                   password        CHAR(50)
+                                   );'''
+                      )
+            self.sql_helper.conn.commit()
+            # 创建10个初始化用户
+            for i in range(1, 11):
+                lines = ('password{}'.format(i)).encode('utf-8')
+                magic = hashlib.md5(lines).hexdigest()
+                self.insert('test{}'.format(i), magic)
+        except Exception as e:
+            pass
+
+    def insert(self,  name, password):
+        sql = """INSERT INTO USER (username ,password) VALUES ("{}","{}")""".format(name, password)
+        self.sql_helper.insert(sql)
+
+    def get_one(self,username):
+        # 获取单个
+        sql = 'select * from USER where username="{}"'.format(username)
+        row = self.sql_helper.select(sql)
+        if not row:
+            return None
+        item= row[0]
+        return{
+            "id":item[0],
+            "username":item[1],
+            "password":item[2],
+        }
 
 def build_response_refill(where, what):
     text = "<action>\n"
@@ -104,7 +348,7 @@ def handle_login_request(iuser, imagic, parameters):
     u = user_sql.get_one(user)
     if u and password == u.get("password"):
         # 登录成功
-        magic=uuid.uuid4()
+        magic = uuid.uuid4()
         user_hour_sql.insert(user, datetime.datetime.strftime(datetime.datetime.now(), '%d/%m/%Y %H%M'), 'login', magic)
         session_sql.insert(user, magic)
         print("登录成功楼")
@@ -134,7 +378,7 @@ def handle_login_request(iuser, imagic, parameters):
 def handle_add_request(iuser, imagic, parameters):
     print("handle_add_request", parameters)
     text = "<response>\n"
-    session=handle_validate(iuser, imagic)
+    session = handle_validate(iuser, imagic)
     if not session:
         # Invalid sessions redirect to login - 无效的会话重定向到登录
         text += build_response_redirect('/index.html')
@@ -181,7 +425,7 @@ def handle_undo_request(iuser, imagic, parameters):
         text += build_response_redirect('/index.html')
     else:  ## a valid session so process the recording of the entry.
         the_type = parameters.get('typeinput', [''])[0]
-        if occupancy_sql.get_count_from_type(the_type,session['id']) > 0:
+        if occupancy_sql.get_count_from_type(the_type, session['id']) > 0:
             # 如果存在就删除
             occ = parameters.get('occupancyinput', [''])[0]
             occ1 = '1' if occ == '1' else '0'
@@ -261,14 +505,15 @@ def handle_summary_request(iuser, imagic, parameters):
     if not session:
         text += build_response_redirect('/index.html')
     else:
-        text += build_response_refill('sum_car', str(occupancy_sql.get_count_from_type('car',session['id'])))  # ？0是什么
-        text += build_response_refill('sum_taxi', str(occupancy_sql.get_count_from_type('taxi',session['id'])))
-        text += build_response_refill('sum_bus', str(occupancy_sql.get_count_from_type('bus',session['id'])))
-        text += build_response_refill('sum_motorbike', str(occupancy_sql.get_count_from_type('motorbike',session['id'])))
-        text += build_response_refill('sum_bicycle', str(occupancy_sql.get_count_from_type('bicycle',session['id'])))
-        text += build_response_refill('sum_van', str(occupancy_sql.get_count_from_type('van',session['id'])))
-        text += build_response_refill('sum_truck', str(occupancy_sql.get_count_from_type('truck',session['id'])))
-        text += build_response_refill('sum_other', str(occupancy_sql.get_count_from_type('other',session['id'])))
+        text += build_response_refill('sum_car', str(occupancy_sql.get_count_from_type('car', session['id'])))  # ？0是什么
+        text += build_response_refill('sum_taxi', str(occupancy_sql.get_count_from_type('taxi', session['id'])))
+        text += build_response_refill('sum_bus', str(occupancy_sql.get_count_from_type('bus', session['id'])))
+        text += build_response_refill('sum_motorbike',
+                                      str(occupancy_sql.get_count_from_type('motorbike', session['id'])))
+        text += build_response_refill('sum_bicycle', str(occupancy_sql.get_count_from_type('bicycle', session['id'])))
+        text += build_response_refill('sum_van', str(occupancy_sql.get_count_from_type('van', session['id'])))
+        text += build_response_refill('sum_truck', str(occupancy_sql.get_count_from_type('truck', session['id'])))
+        text += build_response_refill('sum_other', str(occupancy_sql.get_count_from_type('other', session['id'])))
         text += build_response_refill('total', str(occupancy_sql.get_all_count(session['id'])))
         text += "</response>\n"
         user = ''
@@ -452,5 +697,5 @@ def run():
     print('running server...')
     httpd.serve_forever()  # This function will not return till the server is aborted.
 
-
-run()
+if __name__ == '__main__':
+    run()

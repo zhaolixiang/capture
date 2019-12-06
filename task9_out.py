@@ -10,11 +10,24 @@ Month 是上个月的小时数，包括小数点后一位四舍五入的日期�
 import datetime
 from itertools import groupby
 from operator import itemgetter
+import calendar
+import sys
 
-from ForTime import getMonths
-from SQLHelper import SQLHelper
-from UserHoursSQL import UserHoursSQL
+# 获取上个月天数
+from server import SQLHelper, UserHoursSQL
 
+
+def getMonths(d):
+    c = calendar.Calendar()
+    year = d.year
+    month = d.month
+    if month == 1:
+        month = 12
+        year -= 1
+    else:
+        month -= 1
+    months = calendar.monthrange(year, month)[1]
+    return months
 
 def write_csv(date,file='task9_out.csv'):
     """dete为指定的日期时间，形如：%d/%m/%Y"""
@@ -39,9 +52,6 @@ def write_csv(date,file='task9_out.csv'):
             else:
                 before=i
         items=new_items
-        # day:是给定数据上的小时数，小数点后一位四舍五入。
-        # for i in items:
-        #     print(datetime.datetime.strftime(i['start_date'],'%d/%m/%Y'))
         # 当天的时间
         day_lists=[i for i in items if datetime.datetime.strftime(i['start_date'],'%d/%m/%Y')==datetime.datetime.strftime(select,'%d/%m/%Y')]
         # 当前往前再加6天的时间
@@ -74,15 +84,5 @@ def write_csv(date,file='task9_out.csv'):
         f.writelines(content)
 
 
-
-
-
-    # with open(file) as csvfile:
-    #     for line in csvfile:
-    #         name,date,time,model=line.split(',')
-    #         model=model.strip()
-    #         user_hours_sql.insert(name,date+" "+time,model)
-
 if __name__ == '__main__':
-    # file=os.path.join(os.getcwd(),'task9_in.csv')
-    write_csv('1/6/2019')
+    write_csv(sys.argv[1])
